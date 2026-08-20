@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Environment variables — NEVER commit these
+.env
+.env.local
+.env.*.local
+client/.env
+server/.env
+
+# Build outputs
+client/dist/
+client/build/
+dist/
+build/
+
+# Editor/OS junk
+.DS_Store
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*

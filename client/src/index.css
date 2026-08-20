@@ -1,0 +1,32 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-obsidian text-white font-body;
+    background-image: radial-gradient(circle at 20% 20%, rgba(245,158,11,0.06), transparent 40%),
+                       radial-gradient(circle at 80% 70%, rgba(239,68,68,0.05), transparent 40%);
+    min-height: 100vh;
+  }
+  h1, h2, h3, h4 {
+    @apply font-display;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-glass border border-glass-border rounded-2xl;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+
+  .glow-border-amber {
+    @apply border border-amber/40 shadow-glow-amber transition-shadow duration-300;
+  }
+  .glow-border-amber:hover {
+    @apply shadow-glow-amber;
+  }
+}
