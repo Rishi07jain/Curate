@@ -9,6 +9,7 @@ import { curateGraph } from "./graph/graph.js";
 import { projectArchitectureAgent } from "./graph/nodes/projectArchitectureAgent.js";
 import { latexFormatterAgent } from "./graph/nodes/latexFormatterAgent.js";
 import { detectCompanyName } from "./utils/detectCompanyName.js";
+import { canMakeRequest, recordRequest, getUsage } from "./utils/dailyLimiter.js";
 
 const require = createRequire(import.meta.url);
 const { PDFParse } = require("pdf-parse");
@@ -27,13 +28,33 @@ const explainerModel = new ChatGoogleGenerativeAI({
   apiKey: process.env.GOOGLE_API_KEY,
 });
 
+// Guards the Gemini/Tavily-spending routes with a shared daily cap so the
+// free-tier keys don't get exhausted by public/friend usage.
+function enforceDailyLimit(req, res, next) {
+  if (!canMakeRequest()) {
+    return res.status(429).json({
+      limitReached: true,
+      error:
+        "Sorry — I'm running this on a free plan and have a minimum number of requests to spend per day, and today's quota is used up. Please try again tomorrow. Thanks for your patience! 🙏",
+    });
+  }
+  recordRequest();
+  next();
+}
+
 // Simple health check
 app.get("/", (req, res) => {
   res.json({ status: "Curate backend is alive" });
 });
 
+// Lets you check current daily usage without spending a request.
+app.get("/api/usage", (req, res) => {
+  res.json(getUsage());
+});
+
 // Accepts a .pdf or .docx file, extracts text, and detects the company name
-// mentioned in the JD (so it can't be overridden with a mismatched name).
+// mentioned in the JD. Not rate-limited — no Gemini/Tavily spend beyond the
+// small company-detection call, and users need this just to fill the form.
 app.post("/api/extract-text", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
@@ -66,8 +87,6 @@ app.post("/api/extract-text", upload.single("file"), async (req, res) => {
 
     const trimmedText = text.trim();
 
-    // Best-effort — if this fails for any reason, don't fail the whole
-    // upload, just fall back to no detected company (user enters manually).
     let detectedCompanyName = null;
     try {
       detectedCompanyName = await detectCompanyName(trimmedText);
@@ -83,7 +102,7 @@ app.post("/api/extract-text", upload.single("file"), async (req, res) => {
 });
 
 // This is the route the frontend's "Craft My Role Intelligence" button calls.
-app.post("/api/craft", async (req, res) => {
+app.post("/api/craft", enforceDailyLimit, async (req, res) => {
   try {
     const { jobDescription, companyName, companyUrl } = req.body;
 
@@ -104,10 +123,8 @@ app.post("/api/craft", async (req, res) => {
   }
 });
 
-// Regenerates JUST the projects (not reviews) using already-extracted context —
-// skips extraction and reviewIntelligence entirely, calling the two relevant
-// node functions directly instead of going through the full graph.
-app.post("/api/rethink-projects", async (req, res) => {
+// Regenerates JUST the projects (not reviews) using already-extracted context.
+app.post("/api/rethink-projects", enforceDailyLimit, async (req, res) => {
   try {
     const { techStack, domain, seniority, companyName, avoidProjects } = req.body;
 
@@ -133,9 +150,8 @@ app.post("/api/rethink-projects", async (req, res) => {
 });
 
 // Generates a plain-language explanation of what a project actually is
-// and how to build it — for users who want to genuinely implement it,
-// not just paste it onto their resume.
-app.post("/api/explain-project", async (req, res) => {
+// and how to build it.
+app.post("/api/explain-project", enforceDailyLimit, async (req, res) => {
   try {
     const { project, domain } = req.body;
     if (!project) return res.status(400).json({ error: "Project details required" });
