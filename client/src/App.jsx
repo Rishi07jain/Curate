@@ -4,6 +4,7 @@ import IngestionWorkspace from "./components/ingestion/IngestionWorkspace";
 import LoadingScreen from "./components/loading/LoadingScreen";
 import ProjectsPanel from "./components/projects/ProjectsPanel";
 import ReviewsPanel from "./components/reviews/ReviewsPanel";
+import GithubPanel from "./components/github/GithubPanel";
 import About from "./components/about/About";
 import { api } from "./lib/api";
 
@@ -92,6 +93,7 @@ function App() {
 
         {phase === "done" && result && (
           <div className="space-y-6">
+            {/* Top strip: extracted context + reset */}
             <div className="glass-card px-6 py-4 flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs px-2.5 py-1 rounded-full bg-amber/10 border border-amber/30 text-amber font-mono">
@@ -114,6 +116,7 @@ function App() {
               </button>
             </div>
 
+            {/* Two-column results grid */}
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 items-start">
               <div className="min-w-0">
                 <ProjectsPanel
@@ -125,6 +128,13 @@ function App() {
               </div>
               <ReviewsPanel reviewSummary={result.reviewSummary} rawReviews={result.rawReviews} />
             </div>
+
+            {/* GitHub repo scoring */}
+            <GithubPanel
+              techStack={result.techStack}
+              domain={result.domain}
+              seniority={result.seniority}
+            />
           </div>
         )}
 

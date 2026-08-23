@@ -15,14 +15,14 @@ function checkAndResetIfNewDay() {
   }
 }
 
-export function canMakeRequest() {
+export function canMakeRequest(cost = 1) {
   checkAndResetIfNewDay();
-  return count < DAILY_LIMIT;
+  return count + cost <= DAILY_LIMIT;
 }
 
-export function recordRequest() {
+export function recordRequest(cost = 1) {
   checkAndResetIfNewDay();
-  count++;
+  count += cost;
 }
 
 export function getUsage() {

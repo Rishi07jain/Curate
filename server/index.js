@@ -10,6 +10,8 @@ import { projectArchitectureAgent } from "./graph/nodes/projectArchitectureAgent
 import { latexFormatterAgent } from "./graph/nodes/latexFormatterAgent.js";
 import { detectCompanyName } from "./utils/detectCompanyName.js";
 import { canMakeRequest, recordRequest, getUsage } from "./utils/dailyLimiter.js";
+import { fetchPublicRepos, fetchReadme } from "./utils/githubService.js";
+import { scoreRepoAgainstJD } from "./graph/nodes/repoScorerAgent.js";
 
 const require = createRequire(import.meta.url);
 const { PDFParse } = require("pdf-parse");
@@ -174,6 +176,69 @@ Be concrete, not marketing-speak. Plain prose, no headers or markdown.`;
   } catch (err) {
     console.error("Explain project error:", err);
     res.status(500).json({ error: "Failed to generate explanation" });
+  }
+});
+
+// Lists a GitHub user's public, non-fork repos. Free — no LLM call, not
+// gated by the daily limiter, since it's just a GitHub API passthrough.
+app.get("/api/github/repos", async (req, res) => {
+  try {
+    const { username } = req.query;
+    if (!username) return res.status(400).json({ error: "username is required" });
+
+    const repos = await fetchPublicRepos(username);
+    res.json({ repos });
+  } catch (err) {
+    console.error("GitHub repo fetch error:", err.message);
+    res.status(err.message.includes("No GitHub user") ? 404 : 500).json({ error: err.message });
+  }
+});
+
+// Scores selected repos against the current JD's extracted context.
+// Costs one Gemini call per repo — gated by the daily limiter.
+app.post("/api/github/score-repos", async (req, res) => {
+  try {
+    const { username, repos, techStack, domain, seniority } = req.body;
+
+    if (!username || !repos?.length || !techStack || !domain || !seniority) {
+      return res.status(400).json({ error: "Missing required fields for scoring" });
+    }
+    if (repos.length > 5) {
+      return res.status(400).json({ error: "Please select 5 repos or fewer per scoring request" });
+    }
+    if (!canMakeRequest(repos.length)) {
+      return res.status(429).json({
+        limitReached: true,
+        error:
+          "Sorry — I'm running this on a free plan and today's request quota is used up. Please try again tomorrow. Thanks for your patience! 🙏",
+      });
+    }
+    recordRequest(repos.length);
+
+    const results = await Promise.all(
+      repos.map(async (repo) => {
+        try {
+          const readmeText = await fetchReadme(repo.fullName);
+          const scoreResult = await scoreRepoAgainstJD({
+            repoName: repo.name,
+            repoDescription: repo.description,
+            readmeText,
+            techStack,
+            domain,
+            seniority,
+          });
+          return { ...repo, ...scoreResult };
+        } catch (err) {
+          console.error(`Scoring failed for ${repo.fullName}:`, err.message);
+          return { ...repo, score: null, reasoning: "Could not score this repo — try again.", matchedSkills: [], gaps: [] };
+        }
+      })
+    );
+
+    res.json({ results });
+  } catch (err) {
+    console.error("Repo scoring error:", err);
+    res.status(500).json({ error: "Failed to score repositories" });
   }
 });
 
