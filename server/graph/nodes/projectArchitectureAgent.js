@@ -33,7 +33,13 @@ const model = new ChatGoogleGenerativeAI({
 const structuredModel = model.withStructuredOutput(projectSchema);
 
 export async function projectArchitectureAgent(state) {
-  const { techStack, domain, seniority, companyName } = state;
+  const { techStack, domain, seniority, companyName, avoidProjects } = state;
+
+  const avoidanceClause = avoidProjects?.length
+    ? `\n\nThe candidate has already seen these project ideas and wants something genuinely different — not just renamed, but a different core concept:\n${avoidProjects
+        .map((p, i) => `${i + 1}. "${p.title}" — ${p.description}`)
+        .join("\n")}\nDo not propose projects that solve the same underlying problem or use the same core mechanism as any of these, even under a new name.`
+    : "";
 
   const prompt = `You are a senior technical resume consultant helping a candidate targeting a ${seniority}-level role at "${companyName}", a company in the ${domain} domain.
 
@@ -43,7 +49,7 @@ Invent 3 realistic, impressive-but-plausible personal/academic projects that:
 - Actually use this tech stack in a way specific to the ${domain} domain (not generic CRUD apps)
 - Demonstrate awareness of real ${domain}-specific concerns (e.g. compliance, fraud detection, HIPAA, transaction reconciliation, latency-sensitive systems — whatever genuinely fits ${domain})
 - Have bullet points that follow the XYZ principle (accomplishment, quantified impact, method) but are written as ONE natural, fluent sentence — do NOT literally include the words "measured by" or "by doing" as connectors. For example, write "Cut reconciliation errors by 40% by building an idempotent event-processing pipeline in Node.js" — NOT "Accomplished error reduction, measured by 40%, by doing by building..."
-- Sound like something a strong candidate at ${seniority} level could plausibly have built`;
+- Sound like something a strong candidate at ${seniority} level could plausibly have built${avoidanceClause}`;
 
   const result = await structuredModel.invoke(prompt);
 

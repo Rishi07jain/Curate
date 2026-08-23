@@ -1,15 +1,18 @@
 import { useState, useRef } from "react";
-import { Sparkles, Upload, FileText, X, Loader2 } from "lucide-react";
+import { Sparkles, Upload, FileText, X, Loader2, Lock } from "lucide-react";
 import { api } from "../../lib/api";
 
 export default function IngestionWorkspace({ onSubmitStart, onSubmitSuccess, onSubmitError }) {
   const [mode, setMode] = useState("paste"); // "paste" | "upload"
   const [jobDescription, setJobDescription] = useState("");
   const [jdFile, setJdFile] = useState(null);
+  const [extractedText, setExtractedText] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [companyName, setCompanyName] = useState("");
   const [companyUrl, setCompanyUrl] = useState("");
-  const [isExtracting, setIsExtracting] = useState(false);
+  const [isProcessingFile, setIsProcessingFile] = useState(false);
+  const [companyLocked, setCompanyLocked] = useState(false);
+  const [detectionFailed, setDetectionFailed] = useState(false);
   const fileInputRef = useRef(null);
 
   const acceptedTypes = [
@@ -17,13 +20,53 @@ export default function IngestionWorkspace({ onSubmitStart, onSubmitSuccess, onS
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
   ];
 
-  const handleFile = (file) => {
+  const resetFileState = () => {
+    setJdFile(null);
+    setExtractedText("");
+    setCompanyLocked(false);
+    setDetectionFailed(false);
+    setCompanyName("");
+  };
+
+  const handleFile = async (file) => {
     if (!file) return;
     if (!acceptedTypes.includes(file.type)) {
       alert("Please upload a .pdf or .docx file");
       return;
     }
+
     setJdFile(file);
+    setIsProcessingFile(true);
+    setCompanyLocked(false);
+    setDetectionFailed(false);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await api.post("/api/extract-text", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      const { text, detectedCompanyName } = response.data;
+      setExtractedText(text);
+
+      if (detectedCompanyName) {
+        setCompanyName(detectedCompanyName);
+        setCompanyLocked(true);
+      } else {
+        setCompanyName("");
+        setCompanyLocked(false);
+        setDetectionFailed(true);
+      }
+    } catch (err) {
+      const message =
+        err.response?.data?.error || "Could not extract text from the uploaded file.";
+      onSubmitError?.(message);
+      resetFileState();
+    } finally {
+      setIsProcessingFile(false);
+    }
   };
 
   const handleDrop = (e) => {
@@ -32,31 +75,21 @@ export default function IngestionWorkspace({ onSubmitStart, onSubmitSuccess, onS
     handleFile(e.dataTransfer.files?.[0]);
   };
 
-  const extractTextFromFile = async (file) => {
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const response = await api.post("/api/extract-text", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
-    return response.data.text;
+  const handleModeSwitch = (newMode) => {
+    setMode(newMode);
+    if (newMode === "paste") {
+      // Switching away from upload — unlock the field but keep whatever
+      // was there; user can edit or clear it freely in paste mode.
+      setCompanyLocked(false);
+    }
   };
 
   const handleSubmit = async () => {
-    let finalJobDescription = jobDescription;
+    const finalJobDescription = mode === "upload" ? extractedText : jobDescription;
 
-    if (mode === "upload") {
-      setIsExtracting(true);
-      try {
-        finalJobDescription = await extractTextFromFile(jdFile);
-      } catch (err) {
-        setIsExtracting(false);
-        const message =
-          err.response?.data?.error || "Could not extract text from the uploaded file.";
-        onSubmitError?.(message);
-        return;
-      }
-      setIsExtracting(false);
+    if (mode === "upload" && !finalJobDescription) {
+      onSubmitError?.("File is still processing — please wait a moment and try again.");
+      return;
     }
 
     onSubmitStart?.();
@@ -79,9 +112,9 @@ export default function IngestionWorkspace({ onSubmitStart, onSubmitSuccess, onS
   };
 
   const canSubmit =
-    (mode === "paste" ? jobDescription.trim() : !!jdFile) &&
+    (mode === "paste" ? jobDescription.trim() : !!extractedText) &&
     companyName.trim() &&
-    !isExtracting;
+    !isProcessingFile;
 
   return (
     <div className="glass-card p-8 space-y-6">
@@ -100,7 +133,7 @@ export default function IngestionWorkspace({ onSubmitStart, onSubmitSuccess, onS
           <div className="flex bg-black/30 border border-glass-border rounded-lg p-0.5 text-xs">
             <button
               type="button"
-              onClick={() => setMode("paste")}
+              onClick={() => handleModeSwitch("paste")}
               className={`px-3 py-1.5 rounded-md transition-colors ${
                 mode === "paste" ? "bg-amber/15 text-amber" : "text-white/40 hover:text-white/70"
               }`}
@@ -109,7 +142,7 @@ export default function IngestionWorkspace({ onSubmitStart, onSubmitSuccess, onS
             </button>
             <button
               type="button"
-              onClick={() => setMode("upload")}
+              onClick={() => handleModeSwitch("upload")}
               className={`px-3 py-1.5 rounded-md transition-colors ${
                 mode === "upload" ? "bg-amber/15 text-amber" : "text-white/40 hover:text-white/70"
               }`}
@@ -137,7 +170,7 @@ export default function IngestionWorkspace({ onSubmitStart, onSubmitSuccess, onS
             }}
             onDragLeave={() => setIsDragging(false)}
             onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => !isProcessingFile && fileInputRef.current?.click()}
             className={`w-full h-48 border-2 border-dashed rounded-xl flex flex-col items-center
                         justify-center gap-2 cursor-pointer transition-colors ${
               isDragging
@@ -152,7 +185,12 @@ export default function IngestionWorkspace({ onSubmitStart, onSubmitSuccess, onS
               className="hidden"
               onChange={(e) => handleFile(e.target.files?.[0])}
             />
-            {jdFile ? (
+            {isProcessingFile ? (
+              <div className="flex items-center gap-2 text-white/60 text-sm">
+                <Loader2 size={18} className="animate-spin" />
+                Reading file & detecting company...
+              </div>
+            ) : jdFile ? (
               <div className="flex items-center gap-3 bg-black/30 border border-glass-border rounded-lg px-4 py-2.5">
                 <FileText size={18} className="text-teal" />
                 <span className="text-sm text-white/80">{jdFile.name}</span>
@@ -160,7 +198,7 @@ export default function IngestionWorkspace({ onSubmitStart, onSubmitSuccess, onS
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setJdFile(null);
+                    resetFileState();
                   }}
                   className="text-white/40 hover:text-crimson transition-colors"
                 >
@@ -182,18 +220,30 @@ export default function IngestionWorkspace({ onSubmitStart, onSubmitSuccess, onS
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
-          <label className="text-sm text-white/70 font-medium">
+          <label className="text-sm text-white/70 font-medium flex items-center gap-1.5">
             Company Name <span className="text-crimson">*</span>
+            {companyLocked && (
+              <span className="flex items-center gap-1 text-[11px] text-teal/80 font-normal ml-1">
+                <Lock size={11} /> auto-detected from JD
+              </span>
+            )}
           </label>
           <input
             type="text"
             value={companyName}
             onChange={(e) => setCompanyName(e.target.value)}
+            disabled={companyLocked}
             placeholder="e.g. JioSaavn"
             className="w-full bg-black/30 border border-glass-border rounded-xl px-4 py-3 text-sm
                        text-white/90 placeholder-white/30 focus:outline-none focus:border-amber/50
-                       focus:shadow-glow-amber transition-shadow font-body"
+                       focus:shadow-glow-amber transition-shadow font-body
+                       disabled:opacity-60 disabled:cursor-not-allowed"
           />
+          {mode === "upload" && detectionFailed && (
+            <p className="text-xs text-white/40">
+              Couldn't confidently detect a company name from this file — please enter it manually.
+            </p>
+          )}
         </div>
 
         <div className="space-y-2">
@@ -220,17 +270,8 @@ export default function IngestionWorkspace({ onSubmitStart, onSubmitSuccess, onS
                    hover:bg-amber/20 hover:shadow-glow-amber
                    disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:shadow-none disabled:hover:bg-amber/10"
       >
-        {isExtracting ? (
-          <>
-            <Loader2 size={18} className="animate-spin" />
-            Extracting text from file...
-          </>
-        ) : (
-          <>
-            <Sparkles size={18} />
-            Craft My Role Intelligence
-          </>
-        )}
+        <Sparkles size={18} />
+        Craft My Role Intelligence
       </button>
     </div>
   );

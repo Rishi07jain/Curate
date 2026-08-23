@@ -1,9 +1,13 @@
-import { useState } from "react";
-import { Copy, Check, FileCode, List } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Copy, Check, FileCode, List, Wand2 } from "lucide-react";
+import { api } from "../../lib/api";
 
-export default function ProjectCard({ project }) {
-  const [view, setView] = useState("bullets"); // "bullets" | "latex"
+export default function ProjectCard({ project, domain }) {
+  const [view, setView] = useState("bullets");
   const [copied, setCopied] = useState(false);
+  const [isExplaining, setIsExplaining] = useState(false);
+  const [fullExplanation, setFullExplanation] = useState("");
+  const [typedExplanation, setTypedExplanation] = useState("");
 
   const handleCopy = async () => {
     const textToCopy = view === "latex" ? project.latex : project.bullets.join("\n");
@@ -12,6 +16,33 @@ export default function ProjectCard({ project }) {
     setTimeout(() => setCopied(false), 1500);
   };
 
+  const handleExplain = async () => {
+    setIsExplaining(true);
+    setFullExplanation("");
+    setTypedExplanation("");
+    try {
+      const response = await api.post("/api/explain-project", { project, domain });
+      setFullExplanation(response.data.explanation);
+    } catch {
+      setFullExplanation("Couldn't generate an explanation right now — try again.");
+    } finally {
+      setIsExplaining(false);
+    }
+  };
+
+  // Simple typewriter effect — reveals fullExplanation one character at a time.
+  useEffect(() => {
+    if (!fullExplanation) return;
+    setTypedExplanation("");
+    let i = 0;
+    const interval = setInterval(() => {
+      i++;
+      setTypedExplanation(fullExplanation.slice(0, i));
+      if (i >= fullExplanation.length) clearInterval(interval);
+    }, 12);
+    return () => clearInterval(interval);
+  }, [fullExplanation]);
+
   return (
     <div className="glass-card p-6 space-y-4">
       <div className="flex items-start justify-between gap-4">
@@ -19,8 +50,6 @@ export default function ProjectCard({ project }) {
           <h3 className="font-bold text-lg">{project.title}</h3>
           <p className="text-sm text-white/40">{project.domainTagline}</p>
         </div>
-
-        {/* View toggle */}
         <div className="flex bg-black/30 border border-glass-border rounded-lg p-0.5 text-xs shrink-0">
           <button
             onClick={() => setView("bullets")}
@@ -41,7 +70,6 @@ export default function ProjectCard({ project }) {
         </div>
       </div>
 
-      {/* Tech stack pills */}
       <div className="flex flex-wrap gap-1.5">
         {project.hardSkills.map((skill) => (
           <span
@@ -53,7 +81,6 @@ export default function ProjectCard({ project }) {
         ))}
       </div>
 
-      {/* Content — either plain bullets or LaTeX code */}
       {view === "bullets" ? (
         <ul className="space-y-2">
           {project.bullets.map((bullet, i) => (
@@ -84,13 +111,31 @@ export default function ProjectCard({ project }) {
         </p>
       )}
 
-      <button
-        onClick={handleCopy}
-        className="flex items-center gap-1.5 text-xs text-white/50 hover:text-amber transition-colors"
-      >
-        {copied ? <Check size={13} className="text-teal" /> : <Copy size={13} />}
-        {copied ? "Copied" : `Copy ${view === "latex" ? "LaTeX" : "bullets"}`}
-      </button>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <button
+          onClick={handleCopy}
+          className="flex items-center gap-1.5 text-xs text-white/50 hover:text-amber transition-colors"
+        >
+          {copied ? <Check size={13} className="text-teal" /> : <Copy size={13} />}
+          {copied ? "Copied" : `Copy ${view === "latex" ? "LaTeX" : "bullets"}`}
+        </button>
+
+        <button
+          onClick={handleExplain}
+          disabled={isExplaining}
+          className="flex items-center gap-1.5 text-xs text-white/50 hover:text-amber transition-colors disabled:opacity-50"
+        >
+          <Wand2 size={13} className={isExplaining ? "animate-bounce" : ""} />
+          {isExplaining ? "Conjuring..." : "Explain this project — what do I have to do?"}
+        </button>
+      </div>
+
+      {(typedExplanation || isExplaining) && (
+        <div className="text-sm text-white/70 leading-relaxed bg-black/30 border border-glass-border rounded-xl p-4 break-words">
+          {typedExplanation}
+          {isExplaining && <span className="animate-pulse">▍</span>}
+        </div>
+      )}
     </div>
   );
 }
