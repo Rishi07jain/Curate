@@ -39,19 +39,15 @@ The project generation and the review research happen in parallel, not sequentia
 | Web search | Tavily API | Direct REST calls, no SDK — kept the dependency footprint small |
 | File parsing | `pdf-parse`, `mammoth` | PDF and DOCX text extraction for the upload flow |
 
-## What's built vs. what's next
+## Features
 
-**Working end-to-end right now:**
 - Full pipeline: JD in → extraction → parallel (project generation + review research) → synthesized output
 - Paste-text and file-upload (PDF/DOCX) input, both wired to the same pipeline
-- A results UI that doesn't just dump raw JSON — project cards with a text/LaTeX toggle and one-click copy, a reviews panel with sentiment, culture notes, interview intel, and linked sources
-
-**Not built yet:**
-- A "rethink" option — if the generated projects or reviews aren't useful, regenerate rather than start over from scratch
-- GitHub integration — connect your account, import your actual repos, and have Curate read each repo's README to score how relevant that project already is to a given JD (tech stack match, thematic fit with the company's industry, coverage of what the JD explicitly asks for)
-- A real visual identity. What's live now is functional but looks like what it is — a fast-built utility, not a considered product. That's next.
-- Database persistence (sessions, saved results) and auth — right now every run is stateless and nothing is saved
-- I dropped an earlier plan to add an in-browser LaTeX editor with live PDF compilation (via Monaco). It would've meant standing up a LaTeX compilation service for a feature most users don't need — they already have Overleaf or their own editor. Curate's job is to hand you good content, not to become a second resume editor.
+- Project cards with a text/LaTeX toggle, one-click copy, and an explanation of what each project actually involves and how to build it
+- A Rethink button that regenerates only the project ideas while avoiding the concepts already shown, so the review research and extracted role context stay intact
+- Review intelligence with sentiment, culture notes, interview intel, red flags, and linked Reddit and Glassdoor sources
+- GitHub project scoring: enter a public GitHub username, select up to five of your own non-fork repositories, and score them against the role's tech stack, domain, and seniority
+- GitHub scoring reads each repository's public README and returns a relevance score, reasoning, matched skills, and gaps. No GitHub login or OAuth connection is required.
 
 ## Some things that broke and why
 
